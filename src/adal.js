@@ -111,6 +111,85 @@ var AuthenticationContext = (function () {
             POPUP_WIDTH: 483,
             POPUP_HEIGHT: 600
         };
+        // ==========================================================
+        AuthenticationContext.prototype._getItemSuper = AuthenticationContext.prototype._getItem;
+        AuthenticationContext.prototype._saveItemSuper = AuthenticationContext.prototype._saveItem;
+        AuthenticationContext.prototype.handleWindowCallbackSuper = AuthenticationContext.prototype.handleWindowCallback;
+        AuthenticationContext.prototype._renewTokenSuper = AuthenticationContext.prototype._renewToken;
+        AuthenticationContext.prototype.getRequestInfoSuper = AuthenticationContext.prototype.getRequestInfo;
+        AuthenticationContext.prototype._addAdalFrameSuper = AuthenticationContext.prototype._addAdalFrame;
+
+        AuthenticationContext.prototype._getItem = function (key) {
+            if (this.config.webPartId) {
+                key = this.config.webPartId + '_' + key;
+            }
+
+            return this._getItemSuper(key);
+        };
+
+        AuthenticationContext.prototype._saveItem = function (key, object) {
+            if (this.config.webPartId) {
+                key = this.config.webPartId + '_' + key;
+            }
+
+            return this._saveItemSuper(key, object);
+        };
+
+        AuthenticationContext.prototype.handleWindowCallback = function (hash) {
+            if (hash == null) {
+                hash = window.location.hash;
+            }
+
+            if (!this.isCallback(hash)) {
+                return;
+            }
+
+            var requestInfo = this.getRequestInfo(hash);
+            if (requestInfo.requestType === this.REQUEST_TYPE.LOGIN) {
+                return this.handleWindowCallbackSuper(hash);
+            }
+
+            var resource = this._getResourceFromState(requestInfo.stateResponse);
+            if (!resource || resource.length === 0) {
+                return;
+            }
+
+            if (this._getItem(this.CONSTANTS.STORAGE.RENEW_STATUS + resource) === this.CONSTANTS.TOKEN_RENEW_STATUS_IN_PROGRESS) {
+                return this.handleWindowCallbackSuper(hash);
+            }
+        }
+
+        AuthenticationContext.prototype._renewToken = function (resource, callback) {
+            this._renewTokenSuper(resource, callback);
+            var _renewStates = this._getItem('renewStates');
+            if (_renewStates) {
+                _renewStates = _renewStates.split(',');
+            } else {
+                _renewStates = [];
+            }
+            _renewStates.push(this.config.state);
+            this._saveItem('renewStates', _renewStates);
+        }
+
+        AuthenticationContext.prototype.getRequestInfo = function (hash) {
+            var requestInfo = this.getRequestInfoSuper(hash);
+            var _renewStates = this._getItem('renewStates');
+            if (!_renewStates) {
+                return requestInfo;
+            }
+
+            _renewStates = _renewStates.split(';');
+            for (var i = 0; i < _renewStates.length; i++) {
+                if (_renewStates[i] === requestInfo.stateResponse) {
+                    requestInfo.requestType = this.REQUEST_TYPE.RENEW_TOKEN;
+                    requestInfo.stateMatch = true;
+                    break;
+                }
+            }
+
+            return requestInfo;
+        }
+        // ==========================================================
 
         if (AuthenticationContext.prototype._singletonInstance) {
             return AuthenticationContext.prototype._singletonInstance;
@@ -193,7 +272,7 @@ var AuthenticationContext = (function () {
         window.Logging = {
             piiLoggingEnabled: false,
             level: 0,
-            log: function (message) { }
+            log: function (message) {}
         };
     }
 
@@ -216,8 +295,7 @@ var AuthenticationContext = (function () {
 
         if (!loginStartPage || loginStartPage === "") {
             loginStartPage = window.location.href;
-        }
-        else {
+        } else {
             this._saveItem(this.CONSTANTS.STORAGE.ANGULAR_LOGIN_REQUEST, "")
         }
 
@@ -233,14 +311,12 @@ var AuthenticationContext = (function () {
         if (this.config.displayCall) {
             // User defined way of handling the navigation
             this.config.displayCall(urlNavigate);
-        }
-        else if (this.popUp) {
-            this._saveItem(this.CONSTANTS.STORAGE.STATE_LOGIN, '');// so requestInfo does not match redirect case
+        } else if (this.popUp) {
+            this._saveItem(this.CONSTANTS.STORAGE.STATE_LOGIN, ''); // so requestInfo does not match redirect case
             this._renewStates.push(expectedState);
             this.registerCallback(expectedState, this.config.clientId, this.callback);
             this._loginPopup(urlNavigate);
-        }
-        else {
+        } else {
             this.promptUser(urlNavigate);
         }
     };
@@ -319,9 +395,7 @@ var AuthenticationContext = (function () {
 
         if (this.config.redirectUri.indexOf('#') != -1) {
             var registeredRedirectUri = this.config.redirectUri.split("#")[0];
-        }
-
-        else {
+        } else {
             var registeredRedirectUri = this.config.redirectUri;
         }
 
@@ -345,8 +419,7 @@ var AuthenticationContext = (function () {
                 if (encodeURI(popUpWindowLocation.href).indexOf(encodeURI(registeredRedirectUri)) != -1) {
                     if (that.isAngular) {
                         that._broadcast('adal:popUpHashChanged', popUpWindowLocation.hash);
-                    }
-                    else {
+                    } else {
                         that.handleWindowCallback(popUpWindowLocation.hash);
                     }
 
@@ -358,8 +431,7 @@ var AuthenticationContext = (function () {
                     popupWindow.close();
                     return;
                 }
-            } catch (e) {
-            }
+            } catch (e) {}
         }, 1);
     };
 
@@ -372,7 +444,11 @@ var AuthenticationContext = (function () {
             }
 
             function CustomEvent(event, params) {
-                params = params || { bubbles: false, cancelable: false, detail: undefined };
+                params = params || {
+                    bubbles: false,
+                    cancelable: false,
+                    detail: undefined
+                };
                 var evt = document.createEvent('CustomEvent');
                 evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
                 return evt;
@@ -382,7 +458,9 @@ var AuthenticationContext = (function () {
             window.CustomEvent = CustomEvent;
         })();
 
-        var evt = new CustomEvent(eventName, { detail: data });
+        var evt = new CustomEvent(eventName, {
+            detail: data
+        });
         window.dispatchEvent(evt);
     };
 
@@ -469,8 +547,7 @@ var AuthenticationContext = (function () {
                 for (var i = 0; i < self._callBacksMappedToRenewStates[expectedState].length; ++i) {
                     try {
                         self._callBacksMappedToRenewStates[expectedState][i](errorDesc, token, error, tokenType);
-                    }
-                    catch (error) {
+                    } catch (error) {
                         self.warn(error);
                     }
                 }
@@ -660,8 +737,7 @@ var AuthenticationContext = (function () {
         if (this._activeRenewals[resource]) {
             // Active renewals contains the state for each renewal.
             this.registerCallback(this._activeRenewals[resource], resource, callback);
-        }
-        else {
+        } else {
             this._requestType = this.REQUEST_TYPE.RENEW_TOKEN;
             if (resource === this.config.clientId) {
                 // App uses idtoken to send to api endpoints
@@ -669,8 +745,7 @@ var AuthenticationContext = (function () {
                 if (this._user) {
                     this.verbose('renewing idtoken');
                     this._renewIdToken(callback);
-                }
-                else {
+                } else {
                     this.verbose('renewing idtoken and access_token');
                     this._renewIdToken(callback, this.RESPONSE_TYPE.ID_TOKEN_TOKEN);
                 }
@@ -678,8 +753,7 @@ var AuthenticationContext = (function () {
                 if (this._user) {
                     this.verbose('renewing access_token');
                     this._renewToken(resource, callback);
-                }
-                else {
+                } else {
                     this.verbose('renewing idtoken and access_token');
                     this._renewToken(resource, callback, this.RESPONSE_TYPE.ID_TOKEN_TOKEN);
                 }
@@ -727,8 +801,7 @@ var AuthenticationContext = (function () {
 
         if (claims && (urlNavigate.indexOf("&claims") === -1)) {
             urlNavigate += '&claims=' + encodeURIComponent(claims);
-        }
-        else if (claims && (urlNavigate.indexOf("&claims") !== -1)) {
+        } else if (claims && (urlNavigate.indexOf("&claims") !== -1)) {
             throw new Error('Claims cannot be passed as an extraQueryParameter');
         }
 
@@ -780,8 +853,7 @@ var AuthenticationContext = (function () {
 
         if (claims && (urlNavigate.indexOf("&claims") === -1)) {
             urlNavigate += '&claims=' + encodeURIComponent(claims);
-        }
-        else if (claims && (urlNavigate.indexOf("&claims") !== -1)) {
+        } else if (claims && (urlNavigate.indexOf("&claims") !== -1)) {
             throw new Error('Claims cannot be passed as an extraQueryParameter');
         }
 
@@ -935,8 +1007,7 @@ var AuthenticationContext = (function () {
                     // add sid
                     urlNavigate += '&sid=' + encodeURIComponent(this._user.profile.sid);
                 }
-            }
-            else if (this._user.profile.upn) {
+            } else if (this._user.profile.upn) {
                 // don't add login_hint twice if user provided it in the extraQueryParameter value
                 if (!this._urlContainsQueryStringParameter("login_hint", urlNavigate)) {
                     // add login_hint
@@ -1225,8 +1296,7 @@ var AuthenticationContext = (function () {
                             this._saveItem(this.CONSTANTS.STORAGE.ACCESS_TOKEN_KEY + resource, requestInfo.parameters[this.CONSTANTS.ID_TOKEN]);
                             this._saveItem(this.CONSTANTS.STORAGE.EXPIRATION_KEY + resource, this._user.profile.exp);
                         }
-                    }
-                    else {
+                    } else {
                         requestInfo.parameters['error'] = 'invalid id_token';
                         requestInfo.parameters['error_description'] = 'Invalid id_token. id_token: ' + requestInfo.parameters[this.CONSTANTS.ID_TOKEN];
                         this._saveItem(this.CONSTANTS.STORAGE.ERROR, 'invalid id_token');
@@ -1276,8 +1346,7 @@ var AuthenticationContext = (function () {
             if (this._getHostFromUri(endpoint) === this._getHostFromUri(this.config.redirectUri)) {
                 return this.config.loginResource;
             }
-        }
-        else {
+        } else {
             // in angular level, the url for $http interceptor call could be relative url,
             // if it's relative call, we'll treat it as app backend call.
             return this.config.loginResource;
@@ -1313,12 +1382,11 @@ var AuthenticationContext = (function () {
             var self = null;
             var isPopup = false;
 
-            if (this._openedWindows.length > 0 && this._openedWindows[this._openedWindows.length - 1].opener
-                && this._openedWindows[this._openedWindows.length - 1].opener._adalInstance) {
+            if (this._openedWindows.length > 0 && this._openedWindows[this._openedWindows.length - 1].opener &&
+                this._openedWindows[this._openedWindows.length - 1].opener._adalInstance) {
                 self = this._openedWindows[this._openedWindows.length - 1].opener._adalInstance;
                 isPopup = true;
-            }
-            else if (window.parent && window.parent._adalInstance) {
+            } else if (window.parent && window.parent._adalInstance) {
                 self = window.parent._adalInstance;
             }
 
@@ -1327,8 +1395,7 @@ var AuthenticationContext = (function () {
 
             if (isPopup || window.parent !== window) {
                 tokenReceivedCallback = self._callBackMappedToRenewStates[requestInfo.stateResponse];
-            }
-            else {
+            } else {
                 tokenReceivedCallback = self.callback;
             }
 
@@ -1423,8 +1490,7 @@ var AuthenticationContext = (function () {
 
         if (window.atob) {
             return decodeURIComponent(escape(window.atob(base64IdToken))); // jshint ignore:line
-        }
-        else {
+        } else {
             return decodeURIComponent(escape(this._decode(base64IdToken)));
         }
     };
@@ -1553,7 +1619,7 @@ var AuthenticationContext = (function () {
      */
     AuthenticationContext.prototype._deserialize = function (query) {
         var match,
-            pl = /\+/g,  // Regex for replacing addition symbol with a space
+            pl = /\+/g, // Regex for replacing addition symbol with a space
             search = /([^&=]+)=([^&]*)/g,
             decode = function (s) {
                 return decodeURIComponent(s.replace(pl, ' '));
@@ -1620,8 +1686,7 @@ var AuthenticationContext = (function () {
             buffer[8] &= 0xbf; //buffer[8] & 10111111 will set the 6 bit to 0.
             return this._decimalToHex(buffer[0]) + this._decimalToHex(buffer[1]) + this._decimalToHex(buffer[2]) + this._decimalToHex(buffer[3]) + '-' + this._decimalToHex(buffer[4]) + this._decimalToHex(buffer[5]) + '-' + this._decimalToHex(buffer[6]) + this._decimalToHex(buffer[7]) + '-' +
                 this._decimalToHex(buffer[8]) + this._decimalToHex(buffer[9]) + '-' + this._decimalToHex(buffer[10]) + this._decimalToHex(buffer[11]) + this._decimalToHex(buffer[12]) + this._decimalToHex(buffer[13]) + this._decimalToHex(buffer[14]) + this._decimalToHex(buffer[15]);
-        }
-        else {
+        } else {
             var guidHolder = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
             var hex = '0123456789abcdef';
             var r = 0;
@@ -1688,8 +1753,7 @@ var AuthenticationContext = (function () {
                 ifr.style.width = ifr.style.height = ifr.borderWidth = '0px';
 
                 adalFrame = document.getElementsByTagName('body')[0].appendChild(ifr);
-            }
-            else if (document.body && document.body.insertAdjacentHTML) {
+            } else if (document.body && document.body.insertAdjacentHTML) {
                 document.body.insertAdjacentHTML('beforeEnd', '<iframe name="' + iframeId + '" id="' + iframeId + '" style="display:none"></iframe>');
             }
             if (window.frames && window.frames[iframeId]) {
@@ -1716,8 +1780,7 @@ var AuthenticationContext = (function () {
             if (preserve) {
                 var value = this._getItem(key) || '';
                 localStorage.setItem(key, value + obj + this.CONSTANTS.CACHE_DELIMETER);
-            }
-            else {
+            } else {
                 localStorage.setItem(key, obj);
             }
 
